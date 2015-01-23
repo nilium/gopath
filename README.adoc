@@ -27,7 +27,9 @@ of gopath, but it's always possible to concatenate the results of two gopath
 runs.
 
 Once a .go-path file is found in a directory, no parent directories are scanned
-for .go-path entries. This is to avoid somewhat weird nesting behavior.
+for .go-path entries. This is to avoid somewhat weird nesting behavior. This
+behavior can be changed by setting the *-to-root* flag to 'true', indicating
+that you'd like to search up through the entire directory tree.
 
 TODO
 ----
@@ -43,6 +45,10 @@ OPTIONS
 -------
 *-marker*='".go-path"'::
 	The name of the marker indicating a GOPATH entry to search for.
+
+*-to-root*='false'::
+	Whether to continue searching up through parent directories even after
+	a marker has been found.
 
 
 AUTHOR
