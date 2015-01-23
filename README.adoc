@@ -1,0 +1,81 @@
+gopath(1)
+=========
+
+NAME
+----
+gopath - print a GOPATH
+
+
+SYNOPSIS
+--------
+*gopath* ['OPTIONS'] ['PATH']
+
+
+DESCRIPTION
+-----------
+gopath writes to standard output a new GOPATH based on the current GOPATH and
+any .go-path entries found in directories listed either on the command line or,
+if nothing is listed on the command line, the current directory.
+
+A .go-path file may be empty, in which case it is treated as a marker for the
+directory it is in. Otherwise, each line in the .go-path file is used as a new
+entry in the GOPATH, in order from top to bottom.
+
+gopath can also search for files other than .go-path using the *-marker*
+option (e.g., .goproj, .goenv, etc.). Only one marker name can be used per run
+of gopath, but it's always possible to concatenate the results of two gopath
+runs.
+
+Once a .go-path file is found in a directory, no parent directories are scanned
+for .go-path entries. This is to avoid somewhat weird nesting behavior.
+
+TODO
+----
+- Support recursive lookup of .go-path entries? Possibly useful for projects
+  with nested dependent gopaths, but at that point it seems more like you're
+  working with a defective project structure.
+- Support multiple .go-path marker names. This is semi-useful because I
+  previously used .go-root files to mark GOPATH entries. Still, that's trivial
+  to fix by renaming files.
+
+
+OPTIONS
+-------
+*-marker*='".go-path"'::
+	The name of the marker indicating a GOPATH entry to search for.
+
+
+AUTHOR
+------
+gopath is written by Noel Cower.
+
+
+COPYING
+-------
+
+Copyright (C) 2015 Noel R. Cower.
+All rights reserved.
+
+Redistribution and use in source and binary forms, with or without
+modification, are permitted provided that the following conditions are met:
+
+1. Redistributions of source code must retain the above copyright notice, this
+   list of conditions and the following disclaimer.
+
+2. Redistributions in binary form must reproduce the above copyright notice,
+   this list of conditions and the following disclaimer in the documentation
+   and/or other materials provided with the distribution.
+
+THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS" AND
+ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED
+WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
+DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE LIABLE
+FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL
+DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR
+SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER
+CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY,
+OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
+OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+
+
+// vim: set syntax=asciidoc noexpandtab sw=8 ts=8 tw=79:
