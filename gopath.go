@@ -61,7 +61,7 @@ outerSearch:
 		}
 
 		for i, ib := range lines {
-			p, err := filepath.Abs(string(ib))
+			p, err := filepath.Abs(filepath.Join(dir, string(ib)))
 			if err != nil {
 				break outerSearch
 			}
