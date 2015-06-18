@@ -26,10 +26,18 @@ option (e.g., .goproj, .goenv, etc.). Only one marker name can be used per run
 of gopath, but it's always possible to concatenate the results of two gopath
 runs.
 
-Once a .go-path file is found in a directory, no parent directories are scanned
-for .go-path entries. This is to avoid somewhat weird nesting behavior. This
-behavior can be changed by setting the *-to-root* flag to 'true', indicating
-that you'd like to search up through the entire directory tree.
+By default, gopath will search all directories up to the root ('/'). To disable
+this and make gopath stop at the first marker/wgo workspace (or both) found,
+you can pass `-to-root=false`.
+
+
+WGO SUPPORT
+-----------
+If a workspace, project, etc. contains a W/.gocfg/gopaths file, gopath will
+incorporate that into the resulting GOPATH variable. This works more or less
+the same as .go-path, except the resulting GOPATH entries are relative to W
+instead of the directory containing the file itself.
+
 
 TODO
 ----
@@ -46,7 +54,7 @@ OPTIONS
 *-marker*='".go-path"'::
 	The name of the marker indicating a GOPATH entry to search for.
 
-*-to-root*='false'::
+*-to-root*='true'::
 	Whether to continue searching up through parent directories even after
 	a marker has been found.
 

@@ -108,7 +108,7 @@ func main() {
 	// CLI options
 	var (
 		gopathFile   string = ".go-path"
-		searchToRoot bool   = false
+		searchToRoot bool   = true
 	)
 
 	flag.StringVar(&gopathFile, "marker", gopathFile, "The marker file to indicate a GOPATH entry with. If the file is non-empty, each line is a GOPATH.")
