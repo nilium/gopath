@@ -27,6 +27,47 @@ func isTTY() bool {
 	return (fi.Mode() & os.ModeNamedPipe) != os.ModeNamedPipe
 }
 
+func joinGopathFile(dir, path, gopath string, includeDir bool) string {
+	b, err := ioutil.ReadFile(path)
+	if err != nil {
+		err = fmt.Errorf("Error reading %q: %v", path, err)
+		return gopath
+	}
+
+	lines := bytes.Split(bytes.Trim(bytes.Replace(b, pathStrip, nil, -1), pathTrim), pathSplit)
+	if len(lines) == 0 || (len(lines) == 1 && len(lines[0]) == 0) {
+		if includeDir {
+			lines = [][]byte{[]byte(dir)}
+		} else {
+			return gopath
+		}
+	}
+
+	for i, ib := range lines {
+		newpath := string(ib)
+		if len(newpath) == 0 {
+			newpath = dir
+		} else if !filepath.IsAbs(newpath) {
+			newpath = filepath.Join(dir, newpath)
+		}
+		p, err := filepath.Abs(newpath)
+		if err != nil {
+			// Skip path if an error occurred making it absolute
+			continue
+		}
+
+		lines[i] = []byte(p)
+	}
+
+	found := string(bytes.Join(lines, pathJoin))
+	if len(gopath) > 0 {
+		gopath = gopath + ":" + found
+	} else {
+		gopath = found
+	}
+	return gopath
+}
+
 // findGopathAboveDir searches for a markerFile representing one or more GOPATH
 // entries in the directory given and all directories above it. If toRoot is
 // false, it will stop at the first markerFile found.
@@ -37,43 +78,14 @@ outerSearch:
 	for err == nil {
 		fpath := filepath.Join(dir, markerFile)
 		fi, err := os.Stat(fpath)
-		if os.IsNotExist(err) || (err == nil && fi.IsDir()) {
-			if dir == "/" || dir == "." {
-				break outerSearch
-			}
-
-			dir = filepath.Dir(dir)
-			continue
-		} else if err != nil {
-			break outerSearch
+		if !(os.IsNotExist(err) || (err == nil && fi.IsDir())) {
+			path = joinGopathFile(dir, fpath, path, true)
 		}
 
-		// fpath exists and is a gopath file
-		b, err := ioutil.ReadFile(fpath)
-		if err != nil {
-			err = fmt.Errorf("Error reading %q: %v", fpath, err)
-			break outerSearch
-		}
-
-		lines := bytes.Split(bytes.Trim(bytes.Replace(b, pathStrip, nil, -1), pathTrim), pathSplit)
-		if len(lines) == 0 || (len(lines) == 1 && len(lines[0]) == 0) {
-			lines = [][]byte{[]byte(dir)}
-		}
-
-		for i, ib := range lines {
-			p, err := filepath.Abs(filepath.Join(dir, string(ib)))
-			if err != nil {
-				break outerSearch
-			}
-
-			lines[i] = []byte(p)
-		}
-
-		found := string(bytes.Join(lines, pathJoin))
-		if len(path) > 0 {
-			path = path + ":" + found
-		} else {
-			path = found
+		fpath = filepath.Join(dir, ".gocfg", "gopaths")
+		fi, err = os.Stat(fpath)
+		if !(os.IsNotExist(err) || (err == nil && fi.IsDir())) {
+			path = joinGopathFile(dir, fpath, path, false)
 		}
 
 		if !toRoot || dir == "/" || dir == "." {
