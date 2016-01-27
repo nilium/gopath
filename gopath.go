@@ -76,7 +76,7 @@ func joinGopathFile(dir, path, gopath string, includeDir bool) (next string, sto
 		if len(newpath) == 0 || newpath[0] == '#' {
 			continue
 		} else if newpath == "-" {
-			logf("Dropping environment GOPATH entries")
+			logf("Dropping environment path entries")
 			drop = true
 			continue
 		} else if newpath == "!" {
@@ -172,20 +172,26 @@ outerSearch:
 func main() {
 	log.SetFlags(0)
 	logprefix("(gopath): ")
+
 	// CLI options
 	var (
 		gopathFile   string = ".go-path"
 		searchToRoot bool   = true
+		envKey       string = "GOPATH"
 	)
 
-	flag.StringVar(&gopathFile, "marker", gopathFile, "The marker `filename` to read GOPATH entries from. If the file is non-empty, each line is a GOPATH entry, otherwise the directory of the file is a GOPATH entry.")
+	flag.StringVar(&envKey, "env", envKey, "The environment variable to read existing path entries from.")
+	flag.StringVar(&gopathFile, "marker", gopathFile, "The marker `filename` to read path entries from. If the file is non-empty, each line is a path entry, otherwise the directory of the file is a path entry.")
 	flag.BoolVar(&searchToRoot, "to-root", searchToRoot, "Whether to continue searching up to the root directory after a marker is found.")
 	flag.BoolVar(&loud, "verbose", loud, "Whether to emit log messages in case of an error. If false, no log messages are printed.")
 
 	flag.Parse()
 
 	// Grab current GOPATH
-	GOPATH := os.Getenv("GOPATH")
+	var GOPATH string
+	if envKey != "" {
+		GOPATH = os.Getenv(envKey)
+	}
 
 	// If no arguments, use CWD.
 	var args []string
