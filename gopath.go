@@ -12,10 +12,17 @@ import (
 	"strings"
 )
 
+func logf(f string, args ...interface{}) {
+	if loud {
+		log.Printf(f, args...)
+	}
+}
+
 var pathSplit = []byte{byte('\n')}
 var pathJoin = []byte{byte(':')}
 var pathTrim = "\n"
 var pathStrip = []byte{byte('\r')}
+var loud bool = false
 
 // isTTY attempts to determine whether the current stdout refers to a terminal.
 func isTTY() bool {
@@ -27,11 +34,31 @@ func isTTY() bool {
 	return (fi.Mode() & os.ModeNamedPipe) != os.ModeNamedPipe
 }
 
-func joinGopathFile(dir, path, gopath string, includeDir bool) string {
+var prefixpad = strings.Repeat(" ", 30)
+
+func logprefix(p string) {
+	p = trunc(p)
+	if len(p) < len(prefixpad) {
+		p = prefixpad[:len(prefixpad)-len(p)] + p
+	}
+	log.SetPrefix(p)
+}
+
+func trunc(p string) string {
+	if len(p) > 30 {
+		return "…" + p[len(p)-29:]
+	}
+	return p
+}
+
+func joinGopathFile(dir, path, gopath string, includeDir bool) (next string, stop, drop bool) {
+	defer log.SetPrefix(log.Prefix())
+	logprefix(path + ": ")
+
 	b, err := ioutil.ReadFile(path)
 	if err != nil {
-		err = fmt.Errorf("Error reading %q: %v", path, err)
-		return gopath
+		logf("Error reading %q: %v", path, err)
+		return gopath, false, false
 	}
 
 	lines := bytes.Split(bytes.Trim(bytes.Replace(b, pathStrip, nil, -1), pathTrim), pathSplit)
@@ -39,53 +66,91 @@ func joinGopathFile(dir, path, gopath string, includeDir bool) string {
 		if includeDir {
 			lines = [][]byte{[]byte(dir)}
 		} else {
-			return gopath
+			return gopath, false, false
 		}
 	}
 
-	for i, ib := range lines {
+	keep := make([][]byte, 0, len(lines))
+	for _, ib := range lines {
 		newpath := string(ib)
-		if len(newpath) == 0 {
-			newpath = dir
+		if len(newpath) == 0 || newpath[0] == '#' {
+			continue
+		} else if newpath == "-" {
+			logf("Dropping environment GOPATH entries")
+			drop = true
+			continue
+		} else if newpath == "!" {
+			logf("Stopping directory search")
+			stop = true
+			continue
 		} else if !filepath.IsAbs(newpath) {
 			newpath = filepath.Join(dir, newpath)
 		}
 		p, err := filepath.Abs(newpath)
 		if err != nil {
+			logf("Error getting path for %q: %v", newpath, err)
 			// Skip path if an error occurred making it absolute
 			continue
 		}
 
-		lines[i] = []byte(p)
+		logf("Keeping %s", p)
+		keep = append(keep, []byte(p))
 	}
 
-	found := string(bytes.Join(lines, pathJoin))
+	found := string(bytes.Join(keep, pathJoin))
 	if len(gopath) > 0 {
 		gopath = gopath + ":" + found
 	} else {
 		gopath = found
 	}
-	return gopath
+	logf("%s (stop=%t drop=%t)", gopath, stop, drop)
+	return gopath, stop, drop
 }
 
 // findGopathAboveDir searches for a markerFile representing one or more GOPATH
 // entries in the directory given and all directories above it. If toRoot is
 // false, it will stop at the first markerFile found.
-func findGopathAboveDir(dir, markerFile string, toRoot bool) (path string, err error) {
+func findGopathAboveDir(dir, markerFile string, toRoot bool) (stop, drop bool, path string, err error) {
+	defer log.SetPrefix(log.Prefix())
+
 	dir, err = filepath.Abs(dir)
+	var paths []string
 
 outerSearch:
-	for err == nil {
-		fpath := filepath.Join(dir, markerFile)
-		fi, err := os.Stat(fpath)
-		if !(os.IsNotExist(err) || (err == nil && fi.IsDir())) {
-			path = joinGopathFile(dir, fpath, path, true)
+	for err == nil && !stop {
+		logprefix(dir + ": ")
+		var fpath string
+		fpath = filepath.Join(dir, markerFile)
+		if markerFile != "" {
+			logf("Looking for marker: %s", fpath)
+			fi, err := os.Stat(fpath)
+			if !(os.IsNotExist(err) || (err == nil && fi.IsDir())) {
+				logf("Reading marker: %s", fpath)
+				pathset, stopAfter, dropAfter := joinGopathFile(dir, fpath, "", true)
+				stop = stop || stopAfter
+				drop = drop || dropAfter
+
+				if len(pathset) > 0 {
+					logf("Appending marker pathset: %v", pathset)
+					paths = append(paths, pathset)
+				}
+			}
 		}
 
+		// wgo support
+		logf("Looking for wgo gopaths: %s", fpath)
 		fpath = filepath.Join(dir, ".gocfg", "gopaths")
-		fi, err = os.Stat(fpath)
+		fi, err := os.Stat(fpath)
 		if !(os.IsNotExist(err) || (err == nil && fi.IsDir())) {
-			path = joinGopathFile(dir, fpath, path, false)
+			logf("Reading wgo gopaths: %s", fpath)
+			pathset, stopAfter, dropAfter := joinGopathFile(dir, fpath, "", false)
+			stop = stop || stopAfter
+			drop = drop || dropAfter
+
+			if len(pathset) > 0 {
+				logf("Appending wgo pathset: %v", pathset)
+				paths = append(paths, pathset)
+			}
 		}
 
 		if !toRoot || dir == "/" || dir == "." {
@@ -98,70 +163,100 @@ outerSearch:
 	if path == "" && err == nil {
 		err = os.ErrNotExist
 	} else if err != nil {
-		path = ""
+		paths = nil
 	}
 
-	return path, err
+	return stop, drop, strings.Join(paths, ":"), err
 }
 
 func main() {
+	log.SetFlags(0)
+	logprefix("(gopath): ")
 	// CLI options
 	var (
 		gopathFile   string = ".go-path"
 		searchToRoot bool   = true
 	)
 
-	flag.StringVar(&gopathFile, "marker", gopathFile, "The marker file to indicate a GOPATH entry with. If the file is non-empty, each line is a GOPATH.")
-	flag.BoolVar(&searchToRoot, "to-root", searchToRoot, "Whether to continue searching up to the root even after a GOPATH entry is found.")
+	flag.StringVar(&gopathFile, "marker", gopathFile, "The marker `filename` to read GOPATH entries from. If the file is non-empty, each line is a GOPATH entry, otherwise the directory of the file is a GOPATH entry.")
+	flag.BoolVar(&searchToRoot, "to-root", searchToRoot, "Whether to continue searching up to the root directory after a marker is found.")
+	flag.BoolVar(&loud, "verbose", loud, "Whether to emit log messages in case of an error. If false, no log messages are printed.")
 
 	flag.Parse()
+
+	// Grab current GOPATH
+	GOPATH := os.Getenv("GOPATH")
 
 	// If no arguments, use CWD.
 	var args []string
 	if flag.NArg() > 0 {
 		args = flag.Args()
+	} else if wd, err := os.Getwd(); err != nil {
+		logf("Error getting working directory:", err)
+		goto end
 	} else {
-		wd, err := os.Getwd()
-		if err != nil {
-			log.Fatal("Error getting working directory:", err)
-		}
 		args = []string{wd}
 	}
 
-	// Enumerate paths, generating GOPATHs for each one
-	paths := make([]string, 0, len(args)+1)
-	for _, p := range args {
-		p, err := findGopathAboveDir(p, gopathFile, searchToRoot)
-		switch {
-		case os.IsNotExist(err):
-			continue
-		case err != nil:
-			log.Fatal("ERROR:", err)
-		default:
+	{
+		// Enumerate paths, generating GOPATHs for each one
+		paths := make([]string, 0, len(args)+1)
+		keepEnv := true
+
+	pathloop:
+		for _, p := range args {
+			stop, drop, p, err := findGopathAboveDir(p, gopathFile, searchToRoot)
+			logf("p=%v", p)
+
+			if drop {
+				keepEnv = false
+			}
+
+			switch {
+			case os.IsNotExist(err):
+				logf("Skipping not-found error: %v", err)
+			case err != nil:
+				logf("ERROR: %v", err)
+				break pathloop
+			default:
+			}
+
+			if len(p) > 0 {
+				logf("Appending pathset %v", p)
+				paths = append(paths, p)
+			}
+
+			if stop {
+				logf("Ending search")
+				break pathloop
+			}
 		}
-		paths = append(paths, p)
-	}
 
-	// Then join each GOPATH string
-	if gopath := os.Getenv("GOPATH"); len(gopath) > 0 {
-		paths = append(paths, gopath)
-	}
-
-	// Remove duplicate entries, retain order
-	result := strings.Split(strings.Join(paths, ":"), ":")
-	found := make(map[string]bool, len(result))
-	unique := make([]string, 0, len(result))
-	for _, p := range result {
-		if found[p] {
-			continue
+		if keepEnv {
+			logf("Appending environment pathset %v", GOPATH)
+			paths = append(paths, GOPATH)
 		}
-		found[p] = true
-		unique = append(unique, p)
+
+		logf("Filtering unique paths: %v", paths)
+
+		// Remove duplicate entries, retain order
+		result := strings.Split(strings.Join(paths, ":"), ":")
+		found := make(map[string]struct{}, len(result))
+		unique := make([]string, 0, len(result))
+		for i, p := range result {
+			if _, ok := found[p]; ok {
+				logf("Dropping duplicate entry %d: %s", i, p)
+				continue
+			}
+			found[p] = struct{}{}
+			unique = append(unique, p)
+		}
+
+		// Join paths into final GOPATH
+		GOPATH = strings.Join(unique, ":")
 	}
 
-	// Join paths into final GOPATH
-	GOPATH := strings.Join(unique, ":")
-
+end:
 	io.WriteString(os.Stdout, GOPATH)
 	if isTTY() {
 		io.WriteString(os.Stdout, "\n")
