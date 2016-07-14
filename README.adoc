@@ -13,9 +13,9 @@ SYNOPSIS
 
 DESCRIPTION
 -----------
-gopath writes to standard output a new GOPATH based on the current GOPATH and
-any .go-path entries found in directories listed either on the command line or,
-if nothing is listed on the command line, the current directory.
+gopath(1) writes to standard output a new GOPATH based on the current GOPATH
+and any .go-path entries found in directories listed either on the command line
+or, if nothing is listed on the command line, the current directory.
 
 A .go-path file may be empty, in which case it is treated as a marker for the
 directory it is in. Otherwise, each line in the .go-path file is used as a new
@@ -57,6 +57,18 @@ OPTIONS
 *-to-root*='true'::
 	Whether to continue searching up through parent directories even after
 	a marker has been found.
+
+
+NOTES
+-----
+Included with gopath is a *_go-shim.bash* script that can be linked or copied
+into a location in your PATH that will act as a gopath shim for other
+executables. For example, linking _go-path.bash to '~/bin/go' would allow the
+*go* tool to pick up its GOPATH from the gopath tool. You can do the same for
+'goimports' or 'godoc' or other tools that use the GOPATH.
+
+The shim is fairly basic, so it may be necessary to write your own if you
+require more convoluted behavior than "exec the next thing in line".
 
 
 AUTHOR
